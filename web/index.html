@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RepoCheckup · Git 仓库接入体检</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3.5" y="3.5" width="17" height="17" rx="5"></rect>
+          <path d="M8 12.2l2.6 2.6L16 9.4" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <strong>RepoCheckup</strong>
+        <span>Git 仓库接入体检</span>
+      </div>
+    </div>
+    <nav class="header-actions">
+      <a href="#methodology">评分口径</a>
+      <span class="rule-tag" id="rule-version">rule —</span>
+    </nav>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div class="hero-head">
+        <div>
+          <p class="eyebrow">48H 实战 · 接入就绪度评估</p>
+          <h1>输入仓库地址，<br>拿到一份可执行的接入体检报告</h1>
+          <p class="hero-sub">
+            自动识别 README / 依赖清单 / 启动脚本的完整度，扫描 Windows 专用脚本、硬编码路径与密钥泄露，
+            输出 0–100 分的接入就绪度评分与风险清单。
+          </p>
+        </div>
+        <div class="hero-facts">
+          <div><strong>6</strong><span>检测维度</span></div>
+          <div><strong>30+</strong><span>密钥与路径规则</span></div>
+          <div><strong>0</strong><span>写入仓库</span></div>
+        </div>
+      </div>
+
+      <form id="analyze-form" autocomplete="off">
+        <div class="input-row">
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.2"></circle>
+              <path d="M8.4 12h7.2M12 8.4v7.2" stroke-linecap="round"></path>
+            </svg>
+            <input id="repo-url" type="text" spellcheck="false"
+                   placeholder="https://github.com/owner/repo 或本机目录路径（离线演示）">
+          </div>
+          <button type="submit" id="submit-btn" class="btn-primary">
+            <span>开始体检</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="examples">
+          <span>试试：</span>
+          <button type="button" class="chip" data-url="https://github.com/pallets/flask">pallets/flask</button>
+          <button type="button" class="chip" data-url="https://github.com/octocat/Hello-World">octocat/Hello-World</button>
+          <button type="button" class="chip" data-url="https://github.com/expressjs/express">expressjs/express</button>
+          <button type="button" class="chip" data-url=".">本机当前目录</button>
+        </div>
+
+        <details class="ai-config" id="ai-config">
+          <summary>
+            可选：接入大模型生成接入建议
+            <span class="summary-hint" id="ai-mode-hint">未配置时使用本地规则引擎</span>
+          </summary>
+          <div class="ai-fields">
+            <label>Base URL
+              <input id="ai-base" type="text" placeholder="https://api.openai.com/v1">
+            </label>
+            <label>模型
+              <input id="ai-model" type="text" placeholder="gpt-4o-mini">
+            </label>
+            <label>API Key
+              <input id="ai-key" type="password" placeholder="sk-...（仅随请求发送到本机服务，不落盘）">
+            </label>
+          </div>
+          <p class="ai-note">
+            密钥只保存在当前页面内存，随请求转发给本机服务端调用 OpenAI 兼容接口；服务端不记录。
+            也可在服务端设置 <code>LLM_API_KEY</code> / <code>LLM_BASE_URL</code> / <code>LLM_MODEL</code>。
+          </p>
+        </details>
+
+        <div class="health-badges" id="health-badges"></div>
+      </form>
+    </section>
+
+    <section id="error-box" class="error-box" hidden>
+      <div class="error-icon" aria-hidden="true">!</div>
+      <div>
+        <strong id="error-title">分析失败</strong>
+        <p id="error-detail"></p>
+        <p class="error-hint" id="error-hint"></p>
+      </div>
+    </section>
+
+    <section id="loading" class="loading-card" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="loading-text">
+        <strong id="loading-title">正在获取仓库数据…</strong>
+        <p id="loading-step">解析仓库地址</p>
+      </div>
+      <span class="loading-time" id="loading-time">0.0s</span>
+    </section>
+
+    <section id="result" hidden>
+      <div id="update-banner" class="update-banner" hidden>
+        <div>
+          <strong>检测到新提交</strong>
+          <span id="update-text"></span>
+        </div>
+        <button type="button" class="btn-ghost" id="update-rerun">重新体检</button>
+      </div>
+
+      <div class="summary-grid">
+        <article class="card score-card">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 180 180" role="img" aria-label="接入就绪度评分">
+              <circle class="ring-track" cx="90" cy="90" r="72"></circle>
+              <circle class="ring-value" id="ring-value" cx="90" cy="90" r="72"></circle>
+            </svg>
+            <div class="ring-label">
+              <strong id="score-value">0</strong>
+              <span>/ 100</span>
+            </div>
+          </div>
+          <div class="score-side">
+            <div class="grade-row">
+              <span class="grade-badge" id="grade-letter">–</span>
+              <span class="grade-label" id="grade-label">评估中</span>
+            </div>
+            <p class="verdict" id="verdict"></p>
+            <div class="risk-counts" id="risk-counts"></div>
+          </div>
+        </article>
+
+        <article class="card dims-card">
+          <div class="card-head">
+            <h2>维度得分</h2>
+            <span class="muted">总分 100 · 五维加权</span>
+          </div>
+          <div class="dims" id="dims"></div>
+        </article>
+      </div>
+
+      <div class="stat-strip" id="stat-strip"></div>
+
+      <div class="card meta-card">
+        <div class="meta-repo">
+          <div class="meta-title">
+            <h2 id="repo-name">—</h2>
+            <a id="repo-link" class="repo-link" href="#" target="_blank" rel="noopener noreferrer" hidden>在 GitHub 查看</a>
+          </div>
+          <p id="repo-desc" class="repo-desc"></p>
+          <div class="meta-tags" id="repo-tags"></div>
+        </div>
+        <div class="meta-commit">
+          <div class="commit-line">
+            <span class="muted">基于 commit</span>
+            <a id="commit-link" href="#" target="_blank" rel="noopener noreferrer"><code id="commit-sha">—</code></a>
+            <span class="pill" id="cache-pill">—</span>
+          </div>
+          <p class="commit-msg" id="commit-msg"></p>
+          <div class="commit-actions">
+            <span class="muted" id="generated-at"></span>
+            <button type="button" class="btn-ghost" id="check-update">检查更新</button>
+            <button type="button" class="btn-ghost" id="rescan">重新扫描</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="risks" role="tab">风险清单 <span class="tab-count" id="risk-tab-count"></span></button>
+        <button class="tab" data-tab="checks" role="tab">检查项 <span class="tab-count" id="check-tab-count"></span></button>
+        <button class="tab" data-tab="facts" role="tab">仓库画像</button>
+        <button class="tab" data-tab="ai" role="tab">AI 建议</button>
+        <button class="tab" data-tab="export" role="tab">导出与口径</button>
+      </div>
+
+      <div class="panel" id="panel-risks">
+        <div class="risk-toolbar">
+          <div class="sev-filters" id="sev-filters">
+            <button class="filter-chip active" data-sev="all">全部</button>
+            <button class="filter-chip" data-sev="critical">严重</button>
+            <button class="filter-chip" data-sev="high">高</button>
+            <button class="filter-chip" data-sev="medium">中</button>
+            <button class="filter-chip" data-sev="low">低</button>
+          </div>
+          <select id="category-filter" class="select">
+            <option value="all">全部分类</option>
+            <option value="secrets">密钥与敏感信息</option>
+            <option value="paths">硬编码路径</option>
+            <option value="windows">Windows 专用</option>
+            <option value="docs">文档</option>
+            <option value="deps">依赖</option>
+            <option value="run">启动</option>
+            <option value="hygiene">工程规范</option>
+          </select>
+          <input id="risk-search" class="search" type="search" placeholder="搜索问题 / 文件 / 规则">
+        </div>
+        <p class="risk-summary" id="risk-summary"></p>
+        <div class="risk-list" id="risk-list"></div>
+        <button type="button" class="btn-ghost load-more" id="load-more" hidden>显示更多</button>
+      </div>
+
+      <div class="panel" id="panel-checks" hidden>
+        <div class="check-groups" id="check-groups"></div>
+      </div>
+
+      <div class="panel" id="panel-facts" hidden>
+        <div class="facts-grid" id="facts-grid"></div>
+      </div>
+
+      <div class="panel" id="panel-ai" hidden>
+        <div class="ai-panel" id="ai-panel"></div>
+      </div>
+
+      <div class="panel" id="panel-export" hidden>
+        <div class="export-actions">
+          <button type="button" class="btn-primary" id="download-md">下载 Markdown 报告</button>
+          <button type="button" class="btn-ghost" id="download-json">下载 JSON 数据</button>
+          <button type="button" class="btn-ghost" id="print-report">打印 / 另存 PDF</button>
+        </div>
+        <div id="export-body" class="export-body"></div>
+      </div>
+    </section>
+
+    <section class="methodology" id="methodology">
+      <h2>评分口径与边界</h2>
+      <div class="method-grid">
+        <div>
+          <h3>五个维度（满分 100）</h3>
+          <ul class="method-list">
+            <li><span>文档与说明</span><b>20</b><em>README、安装/运行说明、LICENSE、文档目录</em></li>
+            <li><span>依赖与构建</span><b>20</b><em>依赖清单、锁文件、运行时版本约束</em></li>
+            <li><span>启动与运行</span><b>15</b><em>start/dev 脚本、README 命令、容器/进程描述</em></li>
+            <li><span>跨平台可移植性</span><b>20</b><em>Windows 专用脚本、硬编码绝对路径</em></li>
+            <li><span>安全与敏感信息</span><b>25</b><em>密钥/Token、.env 入库、.gitignore 保护</em></li>
+          </ul>
+        </div>
+        <div>
+          <h3>风险等级</h3>
+          <ul class="method-list">
+            <li><span class="sev sev-critical">严重</span><em>阻断接入：真实密钥、私钥、.env 入库</em></li>
+            <li><span class="sev sev-high">高</span><em>需在接入前处理：个人目录硬编码、证书文件</em></li>
+            <li><span class="sev sev-medium">中</span><em>接入窗口内整改：Windows 脚本、疑似口令</em></li>
+            <li><span class="sev sev-low">低</span><em>建议优化：缺少 CHANGELOG、CI 等</em></li>
+          </ul>
+          <h3>已知边界</h3>
+          <p class="muted">
+            静态扫描、不执行代码、不克隆仓库；仅解析默认分支（可指定 tree/blob 子目录）的前 320 个文本文件，
+            大文件、二进制与锁文件内容不参与扫描。文档中的示例路径不计入风险；密钥命中会脱敏展示。
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>RepoCheckup · 48H 实战题</span>
+    <span id="footer-versions"></span>
+    <span>只读分析 · 不上传代码 · 结果仅供接入评审参考</span>
+  </footer>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
