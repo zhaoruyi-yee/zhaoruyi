@@ -26,6 +26,18 @@ from analyzer import (RULE_VERSION, TOOL_VERSION, RateLimitError, ServiceError,
 WEB_DIR = (Path(__file__).resolve().parent / "web").resolve()
 ALLOW_LOCAL = True
 
+# 显式声明静态资源 MIME：Windows 注册表常把 .js/.css 映射成 text/plain，
+# 配合 nosniff 会让浏览器拒绝执行脚本，导致页面只剩静态外壳
+STATIC_MIME = {
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+}
+
 
 def _health() -> dict:
     return {
@@ -136,9 +148,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"error": {"code": "not_found", "message": "资源不存在"}}, 404)
             return
-        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        content_type = (STATIC_MIME.get(target.suffix.lower())
+                        or mimetypes.guess_type(str(target))[0]
+                        or "application/octet-stream")
         if content_type.startswith("text/") or content_type in ("application/javascript",
-                                                                "application/json"):
+                                                                "application/json",
+                                                                "image/svg+xml"):
             content_type += "; charset=utf-8"
         body = target.read_bytes()
         cache = "no-cache" if target.suffix == ".html" else "public, max-age=300"

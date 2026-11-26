@@ -82,9 +82,39 @@ AI 参与的是「写代码」和「写文案」，**验收标准由我定**：�
   Makefile 优先根目录，且只把启动型目标算作启动方式。
 - 验证：同一快照复测，`readme_command` 变为正确的 `flask run`，`make_targets` 为空。
 
+### 记录 5：静态资源 MIME 让前端脚本被浏览器直接拒绝执行
+
+- AI 写的静态文件服务用 `mimetypes.guess_type()` 猜类型，并统一加了 `X-Content-Type-Options: nosniff`。
+- 现象：这台 Windows 上 `.js` 被猜成 `text/plain`，Chrome/Edge 在 nosniff 下**直接不执行**
+  `app.js`，页面只剩静态外壳（输入框在、样式中，但点「开始体检」毫无反应）。
+- 怎么发现的：登录页看着正常，所以一开始以为是网络或后端问题；后来用无头 Edge + CDP 探针
+  在页面里求值 `typeof runAnalyze`，返回 `undefined`、`document.body.innerText` 里规则版本还是
+  `rule —`（本该由 JS 填成 `2026.11.2`），才确认脚本压根没跑；再查响应头，`.js` 的
+  `Content-Type` 是 `text/plain`，对上 nosniff 规则即解释得通。
+- 修正：服务端改为显式 MIME 映射（`.js → application/javascript`、`.css → text/css`、
+  `.svg → image/svg+xml` …），不再依赖系统注册表；随后首页规则版本正常显示、报告可渲染。
+- 教训：AI 写「能跑通」的服务时容易只测接口不测浏览器，Windows 上的 mimetypes 注册表差异
+  是典型盲区；用「在真实浏览器里断言关键 DOM 值」比「看接口 200」更能兜住这类问题。
+
 ## 5. 我保留的 AI 输出边界
 
 - 评分权重（文档 20 / 依赖 20 / 启动 15 / 可移植 20 / 安全 25）是我按「接入风险优先级」定的，
   没有让 AI 自由发挥；AI 只负责按权重实现计算与展示。
 - AI 生成的每条「整改建议」都必须能对应到报告里的具体事实（维度 gap 或风险），不做无依据的泛泛而谈。
 - 报告里的每一条风险都带文件路径与行号，便于人工复核——AI 的判断可以错，但必须可核对。
+
+## 6. 产物附录：截图与示例报告
+
+截图由本机无头 Edge（CDP 驱动）打开真实页面生成，通过 `?url=` 参数触发真实分析，不是设计稿。
+
+首页：
+
+![首页](docs/screenshots/landing.png)
+
+体检报告（GitLab 示例仓库，commit `aab78e2`，73 分 B）：
+
+![体检报告](docs/screenshots/report.png)
+
+完整 Markdown 报告样例见 [docs/sample-report-flask.md](docs/sample-report-flask.md)
+（`pallets/flask`，commit `49943b5`，76.5 分 B，命令行 `--out` 直接产出）。
+

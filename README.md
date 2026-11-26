@@ -31,6 +31,20 @@ python -m unittest discover -s tests -v
 
 需要 Python 3.10+（使用了 `str | None` 类型标注）。
 
+## 界面截图
+
+首页：
+
+![首页](docs/screenshots/landing.png)
+
+体检报告（`https://gitlab.com/gitlab-examples/python-getting-started`，commit `aab78e2`）：
+
+![体检报告](docs/screenshots/report.png)
+
+也可以直接用 `?url=` 参数直达某份报告，便于分享链接或在 CI 里截图：
+`http://127.0.0.1:8000/?url=https://github.com/pallets/flask`。
+命令行产出的完整 Markdown 样例见 [docs/sample-report-flask.md](docs/sample-report-flask.md)。
+
 ## 页面能做什么
 
 - 输入仓库地址（或用示例快捷按钮），一键分析，进度条展示「解析地址 → 拉取文件树 → 读取文件 → 规则检测 → 评分」

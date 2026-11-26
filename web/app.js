@@ -801,3 +801,10 @@ function switchTab(name) {
 }
 
 init();
+
+// 支持 ?url=<仓库地址> 直达：便于分享报告链接、嵌入自动化截图
+const directUrl = new URLSearchParams(location.search).get('url');
+if (directUrl) {
+  $('repo-url').value = directUrl;
+  runAnalyze(directUrl, false);
+}
